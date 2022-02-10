@@ -1,17 +1,24 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"math"
 	"os"
 	"sort"
 	"strings"
 )
 
-const WORD_FILE = "word_freq.json"
+const WORD_FILE = "data/word_freq.json"
+const TEST_FILE = "data/test_words.txt"
 const WORDLE_LENGTH = 5
+const FIRST_GUESS = "tares"
+
+// I for interactive mode or T for test mode
+const MODE = "T"
 
 type Color int
 
@@ -29,6 +36,7 @@ type WordleSolver struct {
 	greenChars          map[int]byte
 	currCharSet         map[byte]int
 	doesNotContain      map[byte]bool
+	numTotalWords       int
 }
 
 func sigmoid(score float64) float64 {
@@ -55,7 +63,7 @@ func (solver *WordleSolver) loadAllStrings() {
 	}
 
 	solver.lastAcceptableIndex = len(solver.allWords) - 1
-
+	solver.numTotalWords = len(solver.allWords)
 }
 
 // Function that tells if we have solved the puzzle
@@ -195,7 +203,6 @@ func (solver *WordleSolver) pickWord() string {
 		return allWords[i].entropy > allWords[j].entropy
 	})
 	fmt.Println("Picked max entropy ", allWords[0].word, " : ", allWords[0].entropy)
-	fmt.Println(allWords[0])
 	return allWords[0].word
 }
 
@@ -221,34 +228,105 @@ func (solver *WordleSolver) addToState(word, result string) {
 	}
 }
 
-func interactiveMode() {
-
+func (solver *WordleSolver) resetState() {
+	solver.currCharSet = make(map[byte]int)
+	solver.doesNotContain = make(map[byte]bool)
+	solver.greenChars = make(map[int]byte)
+	solver.lastAcceptableIndex = solver.numTotalWords - 1
 }
 
-func testMode() {
-
-}
-
-func main() {
-	solver := &WordleSolver{greenChars: make(map[int]byte), currCharSet: make(map[byte]int), doesNotContain: make(map[byte]bool), WordPopularity: make(map[string]float64)}
-	solver.loadAllStrings()
-	fmt.Println("Loaded ", len(solver.allWords), " strings")
-	var result string
+func interactiveMode(solver *WordleSolver) {
+	var result, currGuess string
 	firstGo := true
 	for solver.isSolved() == false {
-		var currGuess string
 		if firstGo {
-			currGuess = "tares"
+			currGuess = FIRST_GUESS
 			firstGo = false
 		} else {
 			currGuess = solver.pickWord()
 		}
 
 		fmt.Println("Guess - ", currGuess)
-		fmt.Println("Enter Result")
+		fmt.Println("Enter Result ( Format X for Grey, Y for Yellow & G for Green eg 'XYYXG') ")
 		fmt.Scanln(&result)
 		solver.addToState(currGuess, result)
 	}
 
-	fmt.Println("Congrats on solving the puzzle - ", result)
+	fmt.Println("Congrats on solving the puzzle - ", currGuess)
+}
+
+func getResult(currGuess, answer string) string {
+	var result string
+	new_str := []byte(answer)
+
+	for i := 0; i < WORDLE_LENGTH; i++ {
+		if currGuess[i] == new_str[i] {
+			result += "G"
+		} else if !strings.Contains(string(new_str), string(currGuess[i])) {
+			result += "X"
+		} else if strings.Contains(string(new_str), string(currGuess[i])) {
+			result += "Y"
+			new_str[i] = '#'
+		}
+	}
+	return result
+}
+
+func solveWordle(solver *WordleSolver, answer string) int {
+	solver.resetState()
+	var numTries int
+	firstGo := true
+	fmt.Println("Trying to guess word - ", answer)
+	var result, currGuess string
+
+	for solver.isSolved() == false {
+		numTries += 1
+		if firstGo {
+			currGuess = FIRST_GUESS
+			firstGo = false
+		} else {
+			currGuess = solver.pickWord()
+		}
+		result = getResult(currGuess, result)
+		fmt.Println("Guess - ", currGuess, result)
+		solver.addToState(currGuess, result)
+	}
+	return numTries
+}
+
+func testMode(solver *WordleSolver) {
+	file, err := os.Open(TEST_FILE)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	var totalScore, numTestWords int
+	// optionally, resize scanner's capacity for lines over 64K, see next example
+	for scanner.Scan() {
+		if numTestWords%11 == 0 {
+			fmt.Println("Current Avg Score", float64(totalScore)/float64(numTestWords))
+			break
+		}
+		word := scanner.Text()
+		numTries := solveWordle(solver, word)
+		totalScore += numTries
+	}
+
+	fmt.Println("Avg Score ", float64(totalScore)/float64(numTestWords))
+}
+
+func main() {
+	solver := &WordleSolver{greenChars: make(map[int]byte), currCharSet: make(map[byte]int), doesNotContain: make(map[byte]bool), WordPopularity: make(map[string]float64)}
+	solver.loadAllStrings()
+	fmt.Println("Loaded ", len(solver.allWords), " strings")
+
+	if MODE == "I" {
+		interactiveMode(solver)
+	} else if MODE == "T" {
+		testMode(solver)
+	} else {
+		fmt.Println("Please set mode to I for interactive or T for test mode")
+	}
 }
