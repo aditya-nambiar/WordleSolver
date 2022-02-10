@@ -18,7 +18,8 @@ const WORDLE_LENGTH = 5
 const FIRST_GUESS = "tares"
 
 // I for interactive mode or T for test mode
-const MODE = "T"
+// Else it is single test mode
+const MODE = "ST"
 
 type Color int
 
@@ -28,6 +29,14 @@ const (
 	Green
 )
 
+type Mode int
+
+const (
+	Interactive Mode = iota
+	BatchTest
+	SingleTest
+)
+
 type WordleSolver struct {
 	allWords            []string
 	lastAcceptableIndex int
@@ -35,6 +44,7 @@ type WordleSolver struct {
 	WordPopularity      map[string]float64
 	greenChars          map[int]byte
 	currCharSet         map[byte]int
+	knownCount          map[byte]int
 	doesNotContain      map[byte]bool
 	numTotalWords       int
 }
@@ -98,25 +108,16 @@ func checkMatch(option []Color, inputWord, currWord string) int {
 func (solver *WordleSolver) generateAllPossibleOptions(option []Color, index int, inputWord string) float64 {
 	if index == WORDLE_LENGTH {
 		cnt := 0
-		// p := false
-		// if option[0] == 0 && option[1] == 0 {
-		// 	if option[2] == 1 && option[3] == 1 && option[4] == 1 {
-		// 		p = true
-		// 	}
-		// }
+
 		for i := 0; i <= solver.lastAcceptableIndex; i++ {
 			word := solver.allWords[i]
 			cnt += checkMatch(option, inputWord, word)
-			// if p && checkMatch(option, inputWord, word) == 1 {
-			// 	fmt.Println(word)
-			// }
 		}
 		if cnt == 0 {
 			return 0
 		}
 		prob := float64(cnt) / float64(solver.lastAcceptableIndex+1)
 		e := -1.0 * prob * math.Log2(prob)
-		//fmt.Println(option, e, cnt)
 		return e
 	}
 
@@ -151,17 +152,20 @@ func (solver *WordleSolver) checkFeasibleWord(word string) bool {
 		if !strings.Contains(word, string(key)) {
 			return false
 		}
-		if val > 1 {
-			var cnt int
-			for _, c := range word {
-				if byte(c) == key {
-					cnt++
-				}
-			}
-			if cnt < val {
-				return false
+		var cnt int
+		for _, c := range word {
+			if byte(c) == key {
+				cnt++
 			}
 		}
+
+		_, knowCnt := solver.knownCount[key]
+		if cnt < val {
+			return false
+		} else if cnt > val && knowCnt && cnt > solver.knownCount[key] {
+			return false
+		}
+
 	}
 
 	return true
@@ -179,20 +183,28 @@ type wordEntropy struct {
 	entropy float64
 }
 
-func (solver *WordleSolver) pickWord() string {
+func (solver *WordleSolver) pickWord(m Mode, prevGuess string) string {
 
 	var allWords []wordEntropy
+	// print := false
+	// if solver.lastAcceptableIndex < 50 {
+	// 	print = true
+	// }
 
 	for i := 0; i <= solver.lastAcceptableIndex; i++ {
 		word := solver.allWords[i]
-		if !solver.checkFeasibleWord(word) {
+		// if print {
+		// 	fmt.Println(word)
+		// }
+		if word == prevGuess || !solver.checkFeasibleWord(word) {
 			solver.swap(i)
 			i--
 			continue
 		}
 	}
-
-	fmt.Println("Number of words left - ", solver.lastAcceptableIndex)
+	if m != BatchTest {
+		fmt.Println("Number of words left - ", solver.lastAcceptableIndex)
+	}
 
 	for i := 0; i <= solver.lastAcceptableIndex; i++ {
 		word := solver.allWords[i]
@@ -202,7 +214,9 @@ func (solver *WordleSolver) pickWord() string {
 	sort.Slice(allWords, func(i, j int) bool {
 		return allWords[i].entropy > allWords[j].entropy
 	})
-	fmt.Println("Picked max entropy ", allWords[0].word, " : ", allWords[0].entropy)
+	if m != BatchTest {
+		fmt.Println("Picked max entropy ", allWords[0].word, " : ", allWords[0].entropy)
+	}
 	return allWords[0].word
 }
 
@@ -223,7 +237,13 @@ func (solver *WordleSolver) addToState(word, result string) {
 		case 'Y':
 			solver.currCharSet[word[index]] += 1
 		case 'X':
-			solver.doesNotContain[word[index]] = true
+			//  The X could be due to repeat character and hence
+			// we need to first check the currCharSet
+			if _, ok := solver.currCharSet[word[index]]; !ok {
+				solver.doesNotContain[word[index]] = true
+			} else {
+				solver.knownCount[word[index]] = solver.currCharSet[word[index]]
+			}
 		}
 	}
 }
@@ -232,6 +252,7 @@ func (solver *WordleSolver) resetState() {
 	solver.currCharSet = make(map[byte]int)
 	solver.doesNotContain = make(map[byte]bool)
 	solver.greenChars = make(map[int]byte)
+	solver.knownCount = make(map[byte]int)
 	solver.lastAcceptableIndex = solver.numTotalWords - 1
 }
 
@@ -243,7 +264,7 @@ func interactiveMode(solver *WordleSolver) {
 			currGuess = FIRST_GUESS
 			firstGo = false
 		} else {
-			currGuess = solver.pickWord()
+			currGuess = solver.pickWord(Interactive, currGuess)
 		}
 
 		fmt.Println("Guess - ", currGuess)
@@ -262,17 +283,18 @@ func getResult(currGuess, answer string) string {
 	for i := 0; i < WORDLE_LENGTH; i++ {
 		if currGuess[i] == new_str[i] {
 			result += "G"
+			new_str[strings.Index(string(new_str), string(currGuess[i]))] = '#'
 		} else if !strings.Contains(string(new_str), string(currGuess[i])) {
 			result += "X"
 		} else if strings.Contains(string(new_str), string(currGuess[i])) {
 			result += "Y"
-			new_str[i] = '#'
+			new_str[strings.Index(string(new_str), string(currGuess[i]))] = '#'
 		}
 	}
 	return result
 }
 
-func solveWordle(solver *WordleSolver, answer string) int {
+func (solver *WordleSolver) solveWordle(m Mode, answer string) int {
 	solver.resetState()
 	var numTries int
 	firstGo := true
@@ -285,12 +307,13 @@ func solveWordle(solver *WordleSolver, answer string) int {
 			currGuess = FIRST_GUESS
 			firstGo = false
 		} else {
-			currGuess = solver.pickWord()
+			currGuess = solver.pickWord(m, currGuess)
 		}
-		result = getResult(currGuess, result)
-		fmt.Println("Guess - ", currGuess, result)
+		result = getResult(currGuess, answer)
+		//fmt.Println("Guess - ", currGuess, result)
 		solver.addToState(currGuess, result)
 	}
+	fmt.Println("Tries ", numTries)
 	return numTries
 }
 
@@ -305,12 +328,12 @@ func testMode(solver *WordleSolver) {
 	var totalScore, numTestWords int
 	// optionally, resize scanner's capacity for lines over 64K, see next example
 	for scanner.Scan() {
-		if numTestWords%11 == 0 {
+		numTestWords += 1
+		if numTestWords%101 == 0 {
 			fmt.Println("Current Avg Score", float64(totalScore)/float64(numTestWords))
-			break
 		}
 		word := scanner.Text()
-		numTries := solveWordle(solver, word)
+		numTries := solver.solveWordle(BatchTest, word)
 		totalScore += numTries
 	}
 
@@ -318,7 +341,8 @@ func testMode(solver *WordleSolver) {
 }
 
 func main() {
-	solver := &WordleSolver{greenChars: make(map[int]byte), currCharSet: make(map[byte]int), doesNotContain: make(map[byte]bool), WordPopularity: make(map[string]float64)}
+	solver := &WordleSolver{}
+	solver.resetState()
 	solver.loadAllStrings()
 	fmt.Println("Loaded ", len(solver.allWords), " strings")
 
@@ -327,6 +351,9 @@ func main() {
 	} else if MODE == "T" {
 		testMode(solver)
 	} else {
-		fmt.Println("Please set mode to I for interactive or T for test mode")
+		var correctString string
+		fmt.Println("Enter Correct String - ")
+		fmt.Scanln(&correctString)
+		solver.solveWordle(SingleTest, correctString)
 	}
 }
