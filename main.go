@@ -15,11 +15,11 @@ import (
 const WORD_FILE = "data/word_freq.json"
 const TEST_FILE = "data/test_words.txt"
 const WORDLE_LENGTH = 5
-const FIRST_GUESS = "tares"
+const FIRST_GUESS = "corms"
 
 // I for interactive mode or T for test mode
 // Else it is single test mode
-const MODE = "I"
+const MODE = "ST"
 
 type Color int
 
@@ -130,8 +130,26 @@ func (solver *WordleSolver) generateAllPossibleOptions(option []Color, index int
 }
 
 func (solver *WordleSolver) calcEntropy(inputWord string) float64 {
-	option := make([]Color, 5)
-	return solver.generateAllPossibleOptions(option, 0, inputWord)
+	patternCount := make(map[string]int)
+	for i := 0; i <= solver.lastAcceptableIndex; i++ {
+		word := solver.allWords[i]
+		pattern := getResult(word, inputWord)
+		patternCount[pattern] += 1
+		if pattern == "XXYXY" && inputWord == "saner" {
+			fmt.Println(word)
+		}
+	}
+	totalEntropy := 0.0
+	for pattern, cnt := range patternCount {
+
+		if pattern == "XXYXY" && inputWord == "saner" {
+			fmt.Println(cnt)
+		}
+		prob := float64(cnt) / float64(solver.lastAcceptableIndex+1)
+		totalEntropy += -1.0 * prob * math.Log2(prob)
+	}
+
+	return totalEntropy
 }
 
 // Check if this given word is even possible to exist given current state.
@@ -186,16 +204,16 @@ type wordEntropy struct {
 func (solver *WordleSolver) pickWord(m Mode, prevGuess string) string {
 
 	var allWords []wordEntropy
-	// print := false
-	// if solver.lastAcceptableIndex < 50 {
-	// 	print = true
-	// }
+	print := false
+	if solver.lastAcceptableIndex < 50 {
+		print = true
+	}
 
 	for i := 0; i <= solver.lastAcceptableIndex; i++ {
 		word := solver.allWords[i]
-		// if print {
-		// 	fmt.Println(word)
-		// }
+		if print {
+			fmt.Println(word)
+		}
 		if word == prevGuess || !solver.checkFeasibleWord(word) {
 			solver.swap(i)
 			i--
@@ -297,7 +315,7 @@ func getResult(currGuess, answer string) string {
 func (solver *WordleSolver) solveWordle(m Mode, answer string) int {
 	solver.resetState()
 	var numTries int
-	firstGo := true
+	firstGo := false
 	fmt.Println("Trying to guess word - ", answer)
 	var result, currGuess string
 
@@ -310,8 +328,9 @@ func (solver *WordleSolver) solveWordle(m Mode, answer string) int {
 			currGuess = solver.pickWord(m, currGuess)
 		}
 		result = getResult(currGuess, answer)
-		//fmt.Println("Guess - ", currGuess, result)
+		// fmt.Println("Guess - ", currGuess, result)
 		solver.addToState(currGuess, result)
+		break
 	}
 	fmt.Println("Tries ", numTries)
 	return numTries
@@ -350,7 +369,7 @@ func main() {
 		interactiveMode(solver)
 	} else if MODE == "T" {
 		testMode(solver)
-	} else {
+	} else { // Single Test Case
 		var correctString string
 		fmt.Println("Enter Correct String - ")
 		fmt.Scanln(&correctString)
