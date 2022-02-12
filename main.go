@@ -17,6 +17,7 @@ const TEST_FILE = "data/test_words.txt"
 const WORDLE_LENGTH = 5
 const FIRST_GUESS = "tares"
 const POPULARITY_WEIGHT = 1.5
+const GOAL_RESULT = "GGGGG"
 
 // I for interactive mode or T for test mode
 // Else it is single test mode
@@ -43,10 +44,6 @@ type WordleSolver struct {
 	lastAcceptableIndex int
 	Words               []string
 	WordPopularity      map[string]float64
-	greenChars          map[int]byte
-	currCharSet         map[byte]int
-	knownCount          map[byte]int
-	doesNotContain      map[byte]bool
 	numTotalWords       int
 }
 
@@ -85,11 +82,6 @@ func (solver *WordleSolver) loadAllStrings() {
 	solver.numTotalWords = len(solver.allWords)
 }
 
-// Function that tells if we have solved the puzzle
-func (solver *WordleSolver) isSolved() bool {
-	return len(solver.greenChars) == WORDLE_LENGTH
-}
-
 func (solver *WordleSolver) calcEntropy(inputWord string) float64 {
 	patternCount := make(map[string]int)
 	for i := 0; i <= solver.lastAcceptableIndex; i++ {
@@ -104,43 +96,6 @@ func (solver *WordleSolver) calcEntropy(inputWord string) float64 {
 	}
 
 	return totalEntropy
-}
-
-// Check if this given word is even possible to exist given current state.
-func (solver *WordleSolver) checkFeasibleWord(word string) bool {
-	for key, val := range solver.greenChars {
-		if word[key] != val {
-			return false
-		}
-	}
-
-	for key, _ := range solver.doesNotContain {
-		if strings.Contains(word, string(key)) {
-			return false
-		}
-	}
-
-	for key, val := range solver.currCharSet {
-		if !strings.Contains(word, string(key)) {
-			return false
-		}
-		var cnt int
-		for _, c := range word {
-			if byte(c) == key {
-				cnt++
-			}
-		}
-
-		_, knowCnt := solver.knownCount[key]
-		if cnt < val {
-			return false
-		} else if cnt > val && knowCnt && cnt > solver.knownCount[key] {
-			return false
-		}
-
-	}
-
-	return true
 }
 
 func (solver *WordleSolver) swap(i int) {
@@ -199,46 +154,14 @@ func (solver *WordleSolver) pickWord(m Mode, prevGuess string, prevResult string
 	return allWords[0].word
 }
 
-func (solver *WordleSolver) addToState(word, result string) {
-	solver.Words = append(solver.Words, word)
-
-	for index, c := range result {
-		if c == 'Y' || c == 'G' {
-			solver.currCharSet[word[index]] = 0
-		}
-	}
-
-	for index, c := range result {
-		switch c {
-		case 'G':
-			solver.greenChars[index] = word[index]
-			solver.currCharSet[word[index]] += 1
-		case 'Y':
-			solver.currCharSet[word[index]] += 1
-		case 'X':
-			//  The X could be due to repeat character and hence
-			// we need to first check the currCharSet
-			if _, ok := solver.currCharSet[word[index]]; !ok {
-				solver.doesNotContain[word[index]] = true
-			} else {
-				solver.knownCount[word[index]] = solver.currCharSet[word[index]]
-			}
-		}
-	}
-}
-
 func (solver *WordleSolver) resetState() {
-	solver.currCharSet = make(map[byte]int)
-	solver.doesNotContain = make(map[byte]bool)
-	solver.greenChars = make(map[int]byte)
-	solver.knownCount = make(map[byte]int)
 	solver.lastAcceptableIndex = solver.numTotalWords - 1
 }
 
 func interactiveMode(solver *WordleSolver) {
 	var result, currGuess string
 	firstGo := true
-	for solver.isSolved() == false {
+	for result != GOAL_RESULT {
 		if firstGo {
 			currGuess = FIRST_GUESS
 			firstGo = false
@@ -249,7 +172,6 @@ func interactiveMode(solver *WordleSolver) {
 		fmt.Println("Guess - ", currGuess)
 		fmt.Println("Enter Result ( Format X for Grey, Y for Yellow & G for Green eg 'XYYXG') ")
 		fmt.Scanln(&result)
-		solver.addToState(currGuess, result)
 	}
 
 	fmt.Println("Congrats on solving the puzzle - ", currGuess)
@@ -282,7 +204,7 @@ func (solver *WordleSolver) solveWordle(m Mode, answer string, weight float64) i
 	}
 	var result, currGuess string
 
-	for solver.isSolved() == false {
+	for result != GOAL_RESULT {
 		numTries += 1
 		if firstGo {
 			currGuess = FIRST_GUESS
@@ -291,7 +213,6 @@ func (solver *WordleSolver) solveWordle(m Mode, answer string, weight float64) i
 			currGuess = solver.pickWord(m, currGuess, result, weight)
 		}
 		result = getResult(currGuess, answer)
-		solver.addToState(currGuess, result)
 	}
 	if m != BatchTest {
 		fmt.Println("Tries ", numTries)
