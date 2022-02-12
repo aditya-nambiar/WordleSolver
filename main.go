@@ -15,7 +15,7 @@ import (
 const WORD_FILE = "data/word_freq.json"
 const TEST_FILE = "data/test_words.txt"
 const WORDLE_LENGTH = 5
-const FIRST_GUESS = "corms"
+const FIRST_GUESS = "tares"
 
 // I for interactive mode or T for test mode
 // Else it is single test mode
@@ -53,6 +53,17 @@ func sigmoid(score float64) float64 {
 	return 1.0 / (1 + math.Exp(-score))
 }
 
+type Pair struct {
+	Key   string
+	Value float64
+}
+
+type PairList []Pair
+
+func (p PairList) Len() int           { return len(p) }
+func (p PairList) Less(i, j int) bool { return p[i].Value < p[j].Value }
+func (p PairList) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
+
 func (solver *WordleSolver) loadAllStrings() {
 	jsonFile, err := os.Open(WORD_FILE)
 	if err != nil {
@@ -66,10 +77,7 @@ func (solver *WordleSolver) loadAllStrings() {
 	json.Unmarshal(byteValue, &solver.WordPopularity)
 	for word, val := range solver.WordPopularity {
 		solver.allWords = append(solver.allWords, word)
-		solver.WordPopularity[word] = sigmoid(val)
-		// if rand.Float64() < 0.01 {
-		// 	fmt.Println(word, val, solver.WordPopularity[word])
-		// }
+		solver.WordPopularity[word] = sigmoid(math.Log10(val) + 6.3)
 	}
 
 	solver.lastAcceptableIndex = len(solver.allWords) - 1
@@ -79,54 +87,6 @@ func (solver *WordleSolver) loadAllStrings() {
 // Function that tells if we have solved the puzzle
 func (solver *WordleSolver) isSolved() bool {
 	return len(solver.greenChars) == WORDLE_LENGTH
-}
-
-func checkMatch(option []Color, inputWord, currWord string) int {
-	for index, val := range option {
-		switch val {
-		case Green:
-			if currWord[index] != inputWord[index] {
-				return 0
-			}
-		case Yellow:
-			if !strings.Contains(currWord, string(inputWord[index])) {
-				return 0
-			}
-			if currWord[index] == inputWord[index] {
-				return 0
-			}
-
-		case Grey:
-			if strings.Contains(currWord, string(inputWord[index])) {
-				return 0
-			}
-		}
-	}
-	return 1
-}
-
-func (solver *WordleSolver) generateAllPossibleOptions(option []Color, index int, inputWord string) float64 {
-	if index == WORDLE_LENGTH {
-		cnt := 0
-
-		for i := 0; i <= solver.lastAcceptableIndex; i++ {
-			word := solver.allWords[i]
-			cnt += checkMatch(option, inputWord, word)
-		}
-		if cnt == 0 {
-			return 0
-		}
-		prob := float64(cnt) / float64(solver.lastAcceptableIndex+1)
-		e := -1.0 * prob * math.Log2(prob)
-		return e
-	}
-
-	var totalEntropy float64
-	for i := 0; i < 3; i++ {
-		option[index] = Color(i)
-		totalEntropy += solver.generateAllPossibleOptions(option, index+1, inputWord)
-	}
-	return totalEntropy
 }
 
 func (solver *WordleSolver) calcEntropy(inputWord string) float64 {
@@ -308,7 +268,7 @@ func getResult(currGuess, answer string) string {
 func (solver *WordleSolver) solveWordle(m Mode, answer string) int {
 	solver.resetState()
 	var numTries int
-	firstGo := false
+	firstGo := true
 	fmt.Println("Trying to guess word - ", answer)
 	var result, currGuess string
 
@@ -321,7 +281,6 @@ func (solver *WordleSolver) solveWordle(m Mode, answer string) int {
 			currGuess = solver.pickWord(m, currGuess)
 		}
 		result = getResult(currGuess, answer)
-		// fmt.Println("Guess - ", currGuess, result)
 		solver.addToState(currGuess, result)
 	}
 	fmt.Println("Tries ", numTries)
@@ -330,11 +289,11 @@ func (solver *WordleSolver) solveWordle(m Mode, answer string) int {
 
 func testMode(solver *WordleSolver) {
 	file, err := os.Open(TEST_FILE)
+
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer file.Close()
-
 	scanner := bufio.NewScanner(file)
 	var totalScore, numTestWords int
 	// optionally, resize scanner's capacity for lines over 64K, see next example
