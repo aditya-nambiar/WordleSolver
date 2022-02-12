@@ -19,7 +19,7 @@ const FIRST_GUESS = "tares"
 
 // I for interactive mode or T for test mode
 // Else it is single test mode
-const MODE = "ST"
+const MODE = "I"
 
 type Color int
 
