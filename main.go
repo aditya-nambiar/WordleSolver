@@ -133,18 +133,11 @@ func (solver *WordleSolver) calcEntropy(inputWord string) float64 {
 	patternCount := make(map[string]int)
 	for i := 0; i <= solver.lastAcceptableIndex; i++ {
 		word := solver.allWords[i]
-		pattern := getResult(word, inputWord)
+		pattern := getResult(inputWord, word)
 		patternCount[pattern] += 1
-		if pattern == "XXYXY" && inputWord == "saner" {
-			fmt.Println(word)
-		}
 	}
 	totalEntropy := 0.0
-	for pattern, cnt := range patternCount {
-
-		if pattern == "XXYXY" && inputWord == "saner" {
-			fmt.Println(cnt)
-		}
+	for _, cnt := range patternCount {
 		prob := float64(cnt) / float64(solver.lastAcceptableIndex+1)
 		totalEntropy += -1.0 * prob * math.Log2(prob)
 	}
@@ -204,16 +197,16 @@ type wordEntropy struct {
 func (solver *WordleSolver) pickWord(m Mode, prevGuess string) string {
 
 	var allWords []wordEntropy
-	print := false
-	if solver.lastAcceptableIndex < 50 {
-		print = true
-	}
+	// print := false
+	// if solver.lastAcceptableIndex < 50 {
+	// 	print = true
+	// }
 
 	for i := 0; i <= solver.lastAcceptableIndex; i++ {
 		word := solver.allWords[i]
-		if print {
-			fmt.Println(word)
-		}
+		// if print {
+		// 	fmt.Println(word)
+		// }
 		if word == prevGuess || !solver.checkFeasibleWord(word) {
 			solver.swap(i)
 			i--
@@ -330,7 +323,6 @@ func (solver *WordleSolver) solveWordle(m Mode, answer string) int {
 		result = getResult(currGuess, answer)
 		// fmt.Println("Guess - ", currGuess, result)
 		solver.addToState(currGuess, result)
-		break
 	}
 	fmt.Println("Tries ", numTries)
 	return numTries
