@@ -21,7 +21,7 @@ const GOAL_RESULT = "GGGGG"
 
 // I for interactive mode or T for test mode
 // Else it is single test mode
-const MODE = "T"
+const MODE = "I"
 
 type Color int
 
@@ -40,28 +40,23 @@ const (
 )
 
 type WordleSolver struct {
+	// Array of all the words, words from index 0 to lastAcceptableIndex
+	// are the current set of possible answers
 	allWords            []string
 	lastAcceptableIndex int
-	Words               []string
-	WordPopularity      map[string]float64
-	numTotalWords       int
+
+	// Map of word to probability it is an answer based on word frequency
+
+	WordPopularity map[string]float64
+	// Used in batch mode to reset lastAcceptableIndex
+	numTotalWords int
 }
 
 func sigmoid(score float64) float64 {
 	return 1.0 / (1 + math.Exp(-score))
 }
 
-type Pair struct {
-	Key   string
-	Value float64
-}
-
-type PairList []Pair
-
-func (p PairList) Len() int           { return len(p) }
-func (p PairList) Less(i, j int) bool { return p[i].Value < p[j].Value }
-func (p PairList) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
-
+// Function to load all possible set of strings from the file.
 func (solver *WordleSolver) loadAllStrings() {
 	jsonFile, err := os.Open(WORD_FILE)
 	if err != nil {
@@ -82,6 +77,7 @@ func (solver *WordleSolver) loadAllStrings() {
 	solver.numTotalWords = len(solver.allWords)
 }
 
+// Calculates the E[Info] of this word.
 func (solver *WordleSolver) calcEntropy(inputWord string) float64 {
 	patternCount := make(map[string]int)
 	for i := 0; i <= solver.lastAcceptableIndex; i++ {
@@ -253,15 +249,15 @@ func main() {
 	if MODE == "I" {
 		interactiveMode(solver)
 	} else if MODE == "T" {
-		// w := make([]float64, 21)
-		// for i := 0; i <= 20; i++ {
-		// 	w[i] = float64(i) / 10.0
-		// }
-		// for _, w := range w {
-		// 	fmt.Println("Trying weight w, ", w)
-		avg_result := testMode(solver, 1.0)
-		fmt.Println(0.0, avg_result)
-		// }
+		w := make([]float64, 21)
+		for i := 0; i <= 20; i++ {
+			w[i] = float64(i)/10.0 + 0.7
+		}
+		for _, w := range w {
+			fmt.Println("Trying weight w, ", w)
+			avg_result := testMode(solver, w)
+			fmt.Println(w, avg_result)
+		}
 	} else { // Single Test Case
 		var correctString string
 		fmt.Println("Enter Correct String - ")
