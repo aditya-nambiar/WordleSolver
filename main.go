@@ -79,16 +79,20 @@ func (solver *WordleSolver) loadAllStrings() {
 
 // Calculates the E[Info] of this word.
 func (solver *WordleSolver) calcEntropy(inputWord string) float64 {
-	patternCount := make(map[string]int)
+	patternCount := make(map[string]float64)
+	totalProb := 0.0
 	for i := 0; i <= solver.lastAcceptableIndex; i++ {
 		word := solver.allWords[i]
 		pattern := getResult(inputWord, word)
-		patternCount[pattern] += 1
+		patternCount[pattern] += 1 // solver.WordPopularity[word]
+		totalProb += 1             // solver.WordPopularity[word]
 	}
 	totalEntropy := 0.0
 	for _, cnt := range patternCount {
-		prob := float64(cnt) / float64(solver.lastAcceptableIndex+1)
-		totalEntropy += -1.0 * prob * math.Log2(prob)
+		prob := float64(cnt) / totalProb
+		if prob > 0 {
+			totalEntropy += -1.0 * prob * math.Log2(prob)
+		}
 	}
 
 	return totalEntropy
@@ -113,7 +117,7 @@ func (solver *WordleSolver) pickWord(m Mode, prevGuess string, prevResult string
 
 	for i := 0; i <= solver.lastAcceptableIndex; i++ {
 		word := solver.allWords[i]
-		if word == prevGuess || getResult(prevGuess, word) != prevResult {
+		if word == prevGuess || (len(prevGuess) > 0 && getResult(prevGuess, word) != prevResult) {
 			solver.swap(i)
 			i--
 			continue
@@ -128,6 +132,7 @@ func (solver *WordleSolver) pickWord(m Mode, prevGuess string, prevResult string
 		entropy := solver.calcEntropy(word)
 		allWords = append(allWords, wordEntropy{word, entropy + (weight * solver.WordPopularity[word])})
 	}
+
 	sort.Slice(allWords, func(i, j int) bool {
 		return allWords[i].score > allWords[j].score
 	})
@@ -144,7 +149,7 @@ func (solver *WordleSolver) resetState() {
 
 func interactiveMode(solver *WordleSolver) {
 	var result, currGuess string
-	firstGo := true
+	firstGo := false
 	for result != GOAL_RESULT {
 		if firstGo {
 			currGuess = FIRST_GUESS
@@ -162,21 +167,28 @@ func interactiveMode(solver *WordleSolver) {
 }
 
 func getResult(currGuess, answer string) string {
-	var result string
-	new_str := []byte(answer)
+	var result [WORDLE_LENGTH]byte
 
+	new_str := []byte(answer)
 	for i := 0; i < WORDLE_LENGTH; i++ {
 		if currGuess[i] == new_str[i] {
-			result += "G"
-			new_str[strings.Index(string(new_str), string(currGuess[i]))] = '#'
-		} else if !strings.Contains(string(new_str), string(currGuess[i])) {
-			result += "X"
-		} else if strings.Contains(string(new_str), string(currGuess[i])) {
-			result += "Y"
+			result[i] = 'G'
 			new_str[strings.Index(string(new_str), string(currGuess[i]))] = '#'
 		}
 	}
-	return result
+
+	for i := 0; i < WORDLE_LENGTH; i++ {
+		if result[i] == 'G' {
+			continue
+		}
+		if !strings.Contains(string(new_str), string(currGuess[i])) {
+			result[i] = 'X'
+		} else if strings.Contains(string(new_str), string(currGuess[i])) {
+			result[i] = 'Y'
+			new_str[strings.Index(string(new_str), string(currGuess[i]))] = '#'
+		}
+	}
+	return string(result[:])
 }
 
 func (solver *WordleSolver) solveWordle(m Mode, answer string, weight float64) int {
