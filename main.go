@@ -104,24 +104,15 @@ func (solver *WordleSolver) swap(i int) {
 type wordEntropy struct {
 	word string
 	// Calculated as E[Info] + W * P(word)
-	score      float64
-	entropy    float64
-	popularity float64
+	score float64
 }
 
 func (solver *WordleSolver) pickWord(m Mode, prevGuess string, prevResult string, weight float64) string {
 
 	var allWords []wordEntropy
-	// print := false
-	// if solver.lastAcceptableIndex < 50 {
-	// 	print = true
-	// }
 
 	for i := 0; i <= solver.lastAcceptableIndex; i++ {
 		word := solver.allWords[i]
-		// if print {
-		// 	fmt.Println(word)
-		// }
 		if word == prevGuess || getResult(prevGuess, word) != prevResult {
 			solver.swap(i)
 			i--
@@ -135,15 +126,12 @@ func (solver *WordleSolver) pickWord(m Mode, prevGuess string, prevResult string
 	for i := 0; i <= solver.lastAcceptableIndex; i++ {
 		word := solver.allWords[i]
 		entropy := solver.calcEntropy(word)
-		allWords = append(allWords, wordEntropy{word, entropy + (weight * solver.WordPopularity[word]), entropy, solver.WordPopularity[word]})
+		allWords = append(allWords, wordEntropy{word, entropy + (weight * solver.WordPopularity[word])})
 	}
 	sort.Slice(allWords, func(i, j int) bool {
 		return allWords[i].score > allWords[j].score
 	})
 
-	// if len(allWords) < 10 {
-	// 	fmt.Println(allWords)
-	// }
 	if m != BatchTest {
 		fmt.Println("Picked max score ", allWords[0])
 	}
@@ -162,7 +150,7 @@ func interactiveMode(solver *WordleSolver) {
 			currGuess = FIRST_GUESS
 			firstGo = false
 		} else {
-			currGuess = solver.pickWord(Interactive, currGuess, result, POPULARITY_WEIGHT)
+			currGuess = solver.pickWord(Interactive, currGuess, result, 0.0)
 		}
 
 		fmt.Println("Guess - ", currGuess)
@@ -225,12 +213,8 @@ func testMode(solver *WordleSolver, weight float64) float64 {
 	defer file.Close()
 	scanner := bufio.NewScanner(file)
 	var totalScore, numTestWords int
-	// optionally, resize scanner's capacity for lines over 64K, see next example
 	for scanner.Scan() {
 		numTestWords += 1
-		// if numTestWords%101 == 0 {
-		// 	fmt.Println("Current Avg Score", float64(totalScore)/float64(numTestWords))
-		// }
 		word := scanner.Text()
 		numTries := solver.solveWordle(BatchTest, word, weight)
 		totalScore += numTries
@@ -249,15 +233,7 @@ func main() {
 	if MODE == "I" {
 		interactiveMode(solver)
 	} else if MODE == "T" {
-		w := make([]float64, 21)
-		for i := 0; i <= 20; i++ {
-			w[i] = float64(i)/10.0 + 0.7
-		}
-		for _, w := range w {
-			fmt.Println("Trying weight w, ", w)
-			avg_result := testMode(solver, w)
-			fmt.Println(w, avg_result)
-		}
+		testMode(solver, POPULARITY_WEIGHT)
 	} else { // Single Test Case
 		var correctString string
 		fmt.Println("Enter Correct String - ")
